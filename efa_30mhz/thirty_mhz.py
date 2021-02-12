@@ -60,7 +60,7 @@ class SensorType(ThirtyMHzEndpoint):
             'description': description,
             'external': True,
             'jsonKeys': list(json_keys),
-            'dataTypes': ['string'] * len(json_keys),
+            'dataTypes': ['double'] * len(json_keys),
             'radioId': id
         }
         return d

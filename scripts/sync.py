@@ -19,9 +19,9 @@ def sync():
     This command synchronizes the Eurofins sample data with the 30MHz data.
     """
     logger.info('Syncing')
-    with Sync(EurofinsSource, {
-        'conn_string': "DRIVER={SQL Server Native Client 11.0};SERVER=localhost;DATABASE=MEA_MAIN;Integrated " \
-                       "Security=SSPI;Trusted_Connection=yes; ",
-        'table_name': 'sample_data'
-    }, ThirtyMHzTarget, {}) as synchronization:
-        synchronization.start()
+    #with Sync(EurofinsSource, {
+    #    'conn_string': "DRIVER={SQL Server Native Client 11.0};SERVER=localhost;DATABASE=MEA_MAIN;Integrated " \
+    #                   "Security=SSPI;Trusted_Connection=yes; ",
+    #    'table_name': 'sample_data'
+    #}, ThirtyMHzTarget, {}) as synchronization:
+    #    synchronization.start()

@@ -1,39 +1,52 @@
 import json
-import urllib
+import pprint
 from typing import List, Dict
-import sqlalchemy as db
 
-from efa_30mhz.sync import Source
+from loguru import logger
 
-
-class SQLSource(Source):
-    def __init__(self, conn_string, table_name, **kwargs):
-        super(SQLSource, self).__init__(**kwargs)
-        self.conn_string = conn_string
-        self.table_name = table_name
-        self.engine = db.create_engine(conn_string)
-        self.connection = None
-
-    def __enter__(self):
-        self.connection = self.engine.connect()
-        self.metadata = db.MetaData()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.connection.close()
-
-    def read_all(self) -> List:
-        sample_data = db.Table(self.table_name, self.metadata, autoload=True, autoload_with=self.engine)
-        query = db.select([sample_data])
-        result = self.connection.execute(query).fetchall()
-        return result
+from efa_30mhz.mssql import MSSQLSource
 
 
-class MSSQLSource(SQLSource):
-    def __init__(self, conn_string, **kwargs):
-        conn_string = urllib.parse.quote_plus(conn_string)
-        conn_string = "mssql+pyodbc:///?odbc_connect={}".format(conn_string)
-        super(MSSQLSource, self).__init__(conn_string=conn_string, **kwargs)
+def unique_id(item: Dict) -> str:
+    return f"{item['order_sample_data_id']} - {item['sample_id']} - {item['result_code']}"
+
+
+def deduplicate_data(row: Dict) -> List[Dict]:
+    column_mapping = {
+        'resultValue': 'result_value',
+        'resultValue2': 'result_value_2',
+        'resultCode': 'result_code',
+        'resultRank': 'result_rank',
+
+    }
+    for result_group in row['result_group_data']:
+        for result_data in result_group['resultData']:
+            new_row = row.copy()
+            del new_row['result_group_data']
+            for col_from, col_to in column_mapping.items():
+                if col_from in result_data:
+                    new_row[col_to] = result_data[col_from]
+            yield new_row
+
+
+def to_standard_form(row: Dict) -> Dict:
+    """
+    Converts a single row to the standard format with an id, a name and a list of data
+    :param row: a single Eurofins data row
+    :return: A new dict
+    """
+    return {
+        'id': row['sample_id'],
+        'name': row['sample_code'],
+        'data': [
+            {
+                'result_value': row.get('result_value', None),
+                'result_value_2': row.get('result_value_2', None),
+                'result_rank': row.get('result_rank', None),
+                'result_code': row.get('result_code', None),
+            }
+        ]
+    }
 
 
 class EurofinsSource(MSSQLSource):
@@ -68,36 +81,17 @@ class EurofinsSource(MSSQLSource):
 
         row['result_group_data'] = json.loads(row['result_group_data'])
 
-        rows = self.deduplicate_data(row)
+        rows = deduplicate_data(row)
 
         return rows
 
-    def deduplicate_data(self, row: Dict) -> List[Dict]:
-        column_mapping = {
-            'resultValue': 'result_value',
-            'resultValue2': 'result_value_2',
-            'resultCode': 'result_code',
-            'resultRank': 'result_rank',
-
-        }
-        for result_group in row['result_group_data']:
-            for result_data in result_group['resultData']:
-                new_row = row.copy()
-                del new_row['result_group_data']
-                for col_from, col_to in column_mapping.items():
-                    if col_from in result_data:
-                        new_row[col_to] = result_data[col_from]
-                yield new_row
-
-    def unique_id(self, item):
-        return f"{item['order_sample_data_id']} - {item['sample_id']} - {item['result_code']}"
-
     def read_all(self):
         rows = super(EurofinsSource, self).read_all()
-        rows = list(map(self.clean_data, rows))
+        rows = map(self.clean_data, rows)
         flat_rows = (
             item for sublist in rows for item in sublist
         )
         # Remove duplicates from data
-        deduped_dicts = list({self.unique_id(item): item for item in flat_rows}.values())
-        return deduped_dicts
+        deduped_dicts = {unique_id(item): item for item in flat_rows}.values()
+        standard_form = map(to_standard_form, deduped_dicts)
+        return list(standard_form)

@@ -1,10 +1,25 @@
-import urllib
+from typing import List
+import pymssql
 
-from efa_30mhz.sql import SQLSource
+from efa_30mhz.sync import Source
 
 
-class MSSQLSource(SQLSource):
-    def __init__(self, conn_string, **kwargs):
-        conn_string = urllib.parse.quote_plus(conn_string)
-        conn_string = "mssql+pyodbc:///?odbc_connect={}".format(conn_string)
-        super(MSSQLSource, self).__init__(conn_string=conn_string, **kwargs)
+class MSSQLSource(Source):
+    def __init__(self, server, user, password, database, port, table=None, query=None, **kwargs):
+        super(MSSQLSource).__init__(**kwargs)
+        self.conn = pymssql.connect(server=server, user=user, password=password,
+                                    database=database, port=port)
+        self.table = table
+        self.query = query
+
+    @staticmethod
+    def to_thirty_mhz(**kwargs):
+        pass
+
+    def read_all(self) -> List:
+        cursor = self.conn.cursor()
+        if self.table:
+            self.query = f'SELECT * FROM {self.table}'
+        cursor.execute(self.query)
+        result = list(cursor)
+        return result

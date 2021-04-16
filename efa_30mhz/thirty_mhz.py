@@ -5,10 +5,6 @@ from typing import IO, Dict, Any
 
 from loguru import logger
 from abc import ABC, abstractmethod
-from collections import defaultdict
-from datetime import datetime, timezone
-
-import pytz
 import requests
 
 from efa_30mhz.sync import Target
@@ -38,7 +34,7 @@ class ThirtyMHzEndpoint(ABC):
         return self.tmz.post(self.base_url, self.get_data(**kwargs), files=files)
 
     @abstractmethod
-    def get_data(self, item):
+    def get_data(self, **kwargs):
         raise NotImplementedError
 
     def get(self, **kwargs):
@@ -55,21 +51,40 @@ class ThirtyMHzError(Exception):
         super(ThirtyMHzError, self).__init__(message)
 
 
+def infer_type(col):
+    if isinstance(col, float) or isinstance(col, int):
+        return 'double'
+    if isinstance(col, IOBase) or isinstance(col, str):
+        return 'string'
+
+
 class SensorType(ThirtyMHzEndpoint):
     base_url = 'sensor-type'
 
     def check(self, item, **kwargs):
         return str(item['radioId']) == str(kwargs['id'])
 
-    def get_data(self, id, name, data):
-        json_keys, data_types = self.get_data_types(data)
-        logger.debug(f'Data types: {data_types}. Json keys: {json_keys}')
+    def get_data(self, id: str, name: str, schema: Dict):
+        json_keys = []
+        json_labels = []
+        data_types = []
+        metrics = []
+        for key, val in schema.items():
+            json_keys.append(key)
+            json_labels.append(val['name'])
+            data_types.append(val['type'])
+            metrics.append(val.get('metric', 'ph'))
+
+        logger.debug(
+            f'Data types: {data_types}. Json keys: {json_keys}. Json labels: {json_labels}. Metrics: {metrics}.')
         d = {
             'name': name,
             'description': name,
             'external': True,
-            'jsonKeys': list(json_keys),
+            'jsonKeys': json_keys,
+            'jsonLabels': json_labels,
             'dataTypes': data_types,  # ['double'] * len(json_keys),
+            'metrics': metrics,
             'radioId': id
         }
         return d
@@ -78,20 +93,13 @@ class SensorType(ThirtyMHzEndpoint):
         types = {}
         for d in data:
             for col in d.keys():
-                proposed_type = self.infer_type(d[col])
+                proposed_type = infer_type(d[col])
                 # Type already exists
                 if types.get(col, None) and types.get(col) != proposed_type:
                     raise ThirtyMHzError(f'Types for {col} don\'t correspond')
                 else:
                     types[col] = proposed_type
         return list(types.keys()), list(types.values())
-
-    def infer_type(self, col):
-        print(col)
-        if isinstance(col, float) or isinstance(col, int):
-            return 'double'
-        if isinstance(col, IOBase) or isinstance(col, str):
-            return 'string'
 
 
 class ImportCheck(ThirtyMHzEndpoint):
@@ -101,7 +109,6 @@ class ImportCheck(ThirtyMHzEndpoint):
         return item['sourceId'] == str(kwargs['id'])
 
     def get_data(self, id, name, sensor_type):
-        json_keys = set()
         d = {
             'name': name,
             'description': name,
@@ -109,27 +116,27 @@ class ImportCheck(ThirtyMHzEndpoint):
             'enabled': True,
             'sourceId': id,
             'timezone': 'Europe/Amsterdam',
-            'notificationRelevance': 300
+            'notificationRelevance': 300,
+            'locationId': '1'
         }
         return d
 
-    def ingest(self, import_check, import_check_rows):
+    def ingest(self, import_check, rows):
         data = []
-        now = datetime.now(tz=pytz.timezone('Europe/Amsterdam'))
-        now = now.replace(microsecond=0)
-        now_str = now.isoformat()
-        for row in import_check_rows:
-            for r in row['data']:
-                converted_r = self.convert_row(r)
-                data.append({
-                    'checkId': import_check['checkId'],
-                    'data': converted_r,
-                    'timestamp': now_str,
-                    'status': 'ok'
-                })
+        for r in rows:
+            timestamp = r.pop('datetime').replace(microsecond=0).isoformat()
+            converted_r = self.convert_row(r)
+            data.append({
+                'checkId': import_check['checkId'],
+                'data': converted_r,
+                'timestamp': timestamp,
+                'status': 'ok'
+            })
 
         logger.debug(f'Ingesting data: {pformat(data)}')
-        return self.tmz.post('ingest', data)
+        r = self.tmz.post('ingest', data)
+        if r['failedEventsNo'] > 0:
+            raise ThirtyMHzError(f'Failed ingest events: {r}')
 
     def convert_row(self, r: Dict[str, Any]) -> Dict[str, Any]:
         d = {}
@@ -138,7 +145,7 @@ class ImportCheck(ThirtyMHzEndpoint):
                 logger.debug('Creating a data_upload')
                 data_upload = self.tmz.data_upload.create(file=r[k])
                 logger.debug(f'Data upload created: {data_upload}')
-                d[k] = data_upload['presignedUrl']
+                d[k] = data_upload['dataUploadId']
             else:
                 d[k] = r[k]
         return d
@@ -238,52 +245,56 @@ class ThirtyMHz:
 
     def post(self, base_url, data=None, files=None):
         url = self.create_url(base_url)
+        headers = self.headers
         if not files:
             data = json.dumps(data)
-            return requests.post(url, data=data, headers=self.headers, files=files).json()
         else:
-            headers = self.headers
             del headers['Content-type']
-            r = requests.post(url, data=data, headers=headers, files=files)
-            if 200 <= r.status_code < 300:
-                return r.json()
-            else:
-                raise ThirtyMHzError(f"Faulty status code {r.status_code}: {r.json()}")
+        r = requests.post(url, data=data, headers=headers, files=files)
+        if 200 <= r.status_code < 300:
+            logger.debug(r.json())
+            return r.json()
+        else:
+            logger.debug('Something wrong')
+            logger.debug(headers)
+            logger.debug(files)
+            raise ThirtyMHzError(f"Faulty status code {r.status_code}: {r.json()}")
 
 
 class ThirtyMHzTarget(Target):
-    def __init__(self, api_key, organization, **kwargs):
+    def __init__(self, api_key, organization, already_done_out, **kwargs):
         super(ThirtyMHzTarget, self).__init__(**kwargs)
         self.tmz = ThirtyMHz(api_key, organization)
-
-    def __enter__(self):
-        return super(ThirtyMHzTarget, self).__enter__()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        super(ThirtyMHzTarget, self).__exit__(exc_type, exc_val, exc_tb)
+        self.already_done_out = already_done_out
 
     def write(self, rows):
-        super(ThirtyMHzTarget, self).write(rows)
-        import_checks = {}
-        import_rows = defaultdict(list)
-        for row in rows:
-            # Create necessary sensor types
-            if not self.tmz.sensor_type.exists(id=row['id']):
-                logger.debug('Creating sensor type')
-                c = self.tmz.sensor_type.create(id=row['id'], name=row['name'],
-                                                data=row['data'])
-                logger.debug(f'Created sensor type: {c}')
-            logger.debug('Getting sensor type')
-            sensor_type = self.tmz.sensor_type.get(id=row['id'])
+        sensor_types, import_checks, ingests, ids = rows
+        self.write_sensor_types(sensor_types)
+        self.write_import_checks(import_checks)
+        self.write_ingests(ingests)
+        self.write_ids(ids)
 
-            # Create necessary import checks
-            if not self.tmz.import_check.exists(id=row['id']):
+    def write_sensor_types(self, sensor_types):
+        for sensor_type in sensor_types:
+            id = sensor_type['id']
+            if not self.tmz.sensor_type.exists(id=sensor_type['id']):
+                logger.debug('Creating sensor type')
+                self.tmz.sensor_type.create(id=id, name=sensor_type['name'], schema=sensor_type['schema'])
+
+    def write_import_checks(self, import_checks):
+        for import_check in import_checks:
+            if not self.tmz.import_check.exists(id=import_check['id']):
                 logger.debug('Creating import check')
-                c = self.tmz.import_check.create(id=row['id'], name=row['name'],
-                                                 sensor_type=sensor_type)
-            logger.debug('Getting import check')
-            import_check = self.tmz.import_check.get(id=row['id'])
-            import_checks[import_check['checkId']] = import_check
-            import_rows[import_check['checkId']].append(row)
-        for check_id, import_check_rows in import_rows.items():
-            c = self.tmz.import_check.ingest(import_checks[check_id], import_check_rows)
+                sensor_type = self.tmz.sensor_type.get(id=import_check['sensor_type'])
+                self.tmz.import_check.create(id=import_check['id'], name=import_check['name'], sensor_type=sensor_type)
+
+    def write_ingests(self, ingests):
+        for ingest in ingests:
+            import_check = self.tmz.import_check.get(id=ingest['id'])
+            self.tmz.import_check.ingest(import_check, ingest['data'])
+
+    def write_ids(self, ids):
+        with open(self.already_done_out, 'w') as f:
+            logger.debug('Writing to already done')
+            logger.debug(ids)
+            f.write('\n'.join(list(map(str, ids))))

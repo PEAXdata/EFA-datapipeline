@@ -3,3 +3,5 @@ click>=7.1.2
 loguru~=0.5.3
 setuptools~=52.0.0
 requests~=2.25.1
+pytz
+pyyaml

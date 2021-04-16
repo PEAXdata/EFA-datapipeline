@@ -52,3 +52,6 @@ Thumbs.db
 /efa_2021_001_30mhz_synchronization.egg-info/
 /config.py
 *.json
+/config.yaml
+/done_in.txt
+/done_out.txt

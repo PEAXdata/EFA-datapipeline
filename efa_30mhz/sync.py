@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Type, List
+from typing import Dict, Type, List, Callable
+
+from loguru import logger
 
 
 class Source(ABC):
@@ -7,12 +9,9 @@ class Source(ABC):
     def __init__(self, **kwargs):
         pass
 
+    @staticmethod
     @abstractmethod
-    def __enter__(self):
-        return self
-
-    @abstractmethod
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def to_thirty_mhz(**kwargs):
         pass
 
     @abstractmethod
@@ -26,15 +25,7 @@ class Target(ABC):
         pass
 
     @abstractmethod
-    def __enter__(self):
-        return self
-
-    @abstractmethod
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-
-    @abstractmethod
-    def write(self, row):
+    def write(self, rows):
         pass
 
 
@@ -43,22 +34,14 @@ class Sync:
     A Sync object represents a continuous synchronization between a source and a target.
     """
 
-    def __init__(self, source_class: Type[Source], source_kwargs: Dict, target_class: Type[Target],
-                 target_kwargs: Dict) -> None:
-        self.source_class = source_class
-        self.source_kwargs = source_kwargs
-        self.target_class = target_class
-        self.target_kwargs = target_kwargs
+    def __init__(self, source: Source, target: Target) -> None:
+        self.source = source
+        self.target = target
 
     def start(self):
-        with self.source_class(**self.source_kwargs) as source:
-            rows = source.read_all()
-        with self.target_class(**self.target_kwargs) as target:
-            for row in rows:
-                target.write(row)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
+        rows = self.source.read_all()
+        logger.info('Converting data to 30MHz format')
+        thirty_mhz_rows = self.source.to_thirty_mhz(rows)
+        logger.info(f'Writing data')
+        logger.debug(thirty_mhz_rows)
+        self.target.write(thirty_mhz_rows)

@@ -14,5 +14,5 @@ class JSONSource(Source):
         self.filename = filename
 
     def read_all(self) -> List:
-        with open(self.filename, 'r') as f:
+        with open(self.filename, "r") as f:
             return json.load(f)

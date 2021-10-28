@@ -5,3 +5,7 @@ setuptools~=52.0.0
 requests~=2.25.1
 pytz
 pyyaml
+statsd
+zeep
+pymssql
+pandas

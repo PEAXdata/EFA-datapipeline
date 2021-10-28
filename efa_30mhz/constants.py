@@ -1,0 +1,43 @@
+STATS_PREFIX = "efa"
+
+STATS_SOURCE_SAMPLES = f"{STATS_PREFIX}.source.samples.all"
+STATS_SOURCE_CLIENTS = f"{STATS_PREFIX}.source.clients.all"
+
+STATS_SOURCE_SAMPLES_TODO = f"{STATS_PREFIX}.source.samples.todo"
+STATS_SOURCE_CLIENTS_TODO = f"{STATS_PREFIX}.source.clients.todo"
+
+STATS_30MHZ_STATS_TIME = f"{STATS_PREFIX}.30mhz.stats.time"
+STATS_30MHZ_STATS_SUCCESS = f"{STATS_PREFIX}.30mhz.stats.success"
+STATS_30MHZ_STATS_FAILURES = f"{STATS_PREFIX}.30mhz.stats.failures"
+
+STATS_30MHZ_UPLOADS_TIME = f"{STATS_PREFIX}.30mhz.uploads.time"
+STATS_30MHZ_UPLOADS_SUCCESS = f"{STATS_PREFIX}.30mhz.uploads.success"
+STATS_30MHZ_UPLOADS_FAILURES = f"{STATS_PREFIX}.30mhz.uploads.failures"
+
+STATS_30MHZ_SHARE_SENSOR_TYPES_TIME = f"{STATS_PREFIX}.30mhz.sharesensortypes.time"
+STATS_30MHZ_SHARE_SENSOR_TYPES_SUCCESS = (
+    f"{STATS_PREFIX}.30mhz.sharesensortypes.success"
+)
+STATS_30MHZ_SHARE_SENSOR_TYPES_FAILURES = (
+    f"{STATS_PREFIX}.30mhz.sharesensortypes.failures"
+)
+
+STATS_30MHZ_SENSOR_TYPES_TIME = f"{STATS_PREFIX}.30mhz.sensortypes.time"
+STATS_30MHZ_SENSOR_TYPES_TODO = f"{STATS_PREFIX}.30mhz.sensortypes.todo"
+STATS_30MHZ_SENSOR_TYPES_SUCCESS = f"{STATS_PREFIX}.30mhz.sensortypes.success"
+STATS_30MHZ_SENSOR_TYPES_FAILURES = f"{STATS_PREFIX}.30mhz.sensortypes.failures"
+
+STATS_30MHZ_IMPORT_CHECKS_TIME = f"{STATS_PREFIX}.30mhz.importchecks.time"
+STATS_30MHZ_IMPORT_CHECKS_TODO = f"{STATS_PREFIX}.30mhz.importchecks.todo"
+STATS_30MHZ_IMPORT_CHECKS_SUCCESS = f"{STATS_PREFIX}.30mhz.importchecks.success"
+STATS_30MHZ_IMPORT_CHECKS_FAILURES = f"{STATS_PREFIX}.30mhz.importchecks.failures"
+
+STATS_30MHZ_INGESTS_TIME = f"{STATS_PREFIX}.30mhz.ingests.time"
+STATS_30MHZ_INGESTS_TODO = f"{STATS_PREFIX}.30mhz.ingests.todo"
+STATS_30MHZ_INGESTS_SUCCESS = f"{STATS_PREFIX}.30mhz.ingests.success"
+STATS_30MHZ_INGESTS_FAILURES = f"{STATS_PREFIX}.30mhz.ingests.failures"
+
+STATS_APP_SAMPLES_DONE = f"{STATS_PREFIX}.app.samples.done"
+STATS_APP_CLIENTS_DONE = f"{STATS_PREFIX}.app.clients.done"
+STATS_APP_RUNTIME = f"{STATS_PREFIX}.app.runtime"
+STATS_APP_START = f"{STATS_PREFIX}.app.start"

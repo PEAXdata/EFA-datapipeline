@@ -1,6 +1,6 @@
 from efa_30mhz.json import JSONSource
 
-JSON_FILE = 'data/sample_data.json'
+JSON_FILE = "data/sample_data.json"
 
 
 def test_json_number_of_rows():

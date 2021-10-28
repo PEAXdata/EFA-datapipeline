@@ -20,7 +20,9 @@ class SQLSource(Source):
 
     def read_all(self) -> List:
         self.connection = self.connection or self.engine.connect()
-        sample_data = db.Table(self.table_name, self.metadata, autoload=True, autoload_with=self.engine)
+        sample_data = db.Table(
+            self.table_name, self.metadata, autoload=True, autoload_with=self.engine
+        )
         query = db.select([sample_data])
         result = self.connection.execute(query).fetchall()
         self.connection.close()

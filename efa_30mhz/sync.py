@@ -15,7 +15,7 @@ class Source(ABC):
         pass
 
     @abstractmethod
-    def read_all(self) -> List:
+    def read_all(self, *args, **kwargs) -> List:
         return []
 
 
@@ -40,8 +40,7 @@ class Sync:
 
     def start(self):
         rows = self.source.read_all()
-        logger.info('Converting data to 30MHz format')
+        logger.info("Converting data to 30MHz format")
         thirty_mhz_rows = self.source.to_thirty_mhz(rows)
-        logger.info(f'Writing data')
-        logger.debug(thirty_mhz_rows)
+        logger.info(f"Writing data")
         self.target.write(thirty_mhz_rows)

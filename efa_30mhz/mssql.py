@@ -1,14 +1,18 @@
 from typing import List
 import pymssql
+import pandas
 
 from efa_30mhz.sync import Source
 
 
 class MSSQLSource(Source):
-    def __init__(self, server, user, password, database, port, table=None, query=None, **kwargs):
-        super(MSSQLSource).__init__(**kwargs)
-        self.conn = pymssql.connect(server=server, user=user, password=password,
-                                    database=database, port=port)
+    def __init__(
+            self, server, user, password, database, port, table=None, query=None, **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.conn = pymssql.connect(
+            server=server, user=user, password=password, database=database, port=port
+        )
         self.table = table
         self.query = query
 
@@ -16,10 +20,12 @@ class MSSQLSource(Source):
     def to_thirty_mhz(**kwargs):
         pass
 
-    def read_all(self) -> List:
-        cursor = self.conn.cursor()
-        if self.table:
-            self.query = f'SELECT * FROM {self.table}'
-        cursor.execute(self.query)
-        result = list(cursor)
+    def read_all(self, *args, **kwargs) -> List:
+        if not self.query and self.table:
+            self.query = f"SELECT * FROM {self.table}"
+        query = self.query
+        if len(args) > 0:
+            query = self.query.format(*args)
+        df = pandas.read_sql(query, self.conn)
+        result = df.to_dict(orient="records")
         return result

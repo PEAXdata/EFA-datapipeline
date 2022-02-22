@@ -164,8 +164,6 @@ class ImportCheck(ThirtyMHzEndpoint):
                 }
             )
 
-        # logger.debug(f"Ingesting data: {pformat(data)}")
-
         r = self.tmz.post("ingest", data)
         t1 = time.time()
         if r["failedEventsNo"] > 0:
@@ -187,7 +185,6 @@ class ImportCheck(ThirtyMHzEndpoint):
             else:
                 d[k] = r[k]
         return d
-
 
 class DataUpload(ThirtyMHzEndpoint):
     stats_success = cst.STATS_30MHZ_UPLOADS_SUCCESS
@@ -351,8 +348,7 @@ class ThirtyMHz:
             logger.debug(url)
             logger.debug(data)
             raise ThirtyMHzError(f"Faulty status code {r.status_code}: {r.json()}")
-
-
+        
 class ThirtyMHzGetter:
     def __init__(self, default_api_key, default_organization):
         self.tmzs = {}
@@ -372,7 +368,6 @@ class ThirtyMHzGetter:
             return self.tmzs[(api_key, organization)]
         self.tmzs[(api_key, organization)] = ThirtyMHz(api_key, organization)
         return self.tmzs[(api_key, organization)]
-
 
 class ThirtyMHzTarget(Target):
     def __init__(self, api_key, organization, already_done_out, **kwargs):
@@ -483,3 +478,57 @@ class ThirtyMHzTarget(Target):
             logger.debug("Writing to already done")
             logger.debug(ids)
             f.write("\n".join(list(map(str, ids))))
+
+class SamplesGetter:
+    """
+    Class for getting raw samples from 30Mhz API.
+    """
+    
+    def __init__(self, api_key, organization):
+        self.api_key = api_key
+        self.organization = organization
+        self.import_check_url = f"https://api.30mhz.com/api/import-check/organization/{self.organization}"
+        self.stats_url = "https://api.30mhz.com/api/stats/events/check/{import_check_id}/from/{from_date}/until/{end_date}"
+        
+    def get_all_samples_for_user_from_until(self, from_date, end_date):
+        import_checks = self._get_import_checks()
+        import_check_ids = map(
+            self._get_import_check_id,
+            import_checks
+        )
+        for import_check_id in import_check_ids:
+            headers = self.headers
+            params = self.params
+            stats_url = self.stats_url.format(import_check_id=import_check_id, from_date=from_date, end_date=end_date)
+            
+            r = requests.get(stats_url, headers=headers, params=params)
+
+    
+    @property
+    def params(self):
+        return {
+            "intervalSize": "15m",
+            "statisticType": "none"
+        }          
+
+
+    @property
+    def headers(self):
+        return {
+            "Authorization": "Bearer " + self.api_key,
+            "Content-type": "application/json",
+            "Accept": "application/json",
+        }
+
+    def _get_import_checks(self):
+        headers = self.headers
+        r = requests.get(self.import_check_url, headers=headers)
+        if 200 <= r.status_code < 300:
+            return r.json()
+        else:
+            logger.error(r.request.headers)
+            raise ThirtyMHzError(f"Faulty status code {r.status_code}: {r.json()}")
+        
+    @staticmethod
+    def _get_import_check_id(import_check: Dict) -> str:
+        return import_check['checkId']

@@ -42,15 +42,15 @@ class EurofinsSource(Source):
     def to_thirty_mhz(self, rows: List) -> (List, List, List, List):
         sensor_types = []
         import_checks = []
-        for organization_id in set(map(lambda r: r["organization_id"], rows)):
+        for organization_id in set(map(lambda r: r["organization_id"], rows)): # gets all unique sensor types
             organization_rows = list(filter(lambda x: x['organization_id'] == organization_id, rows))
             sensor_types.extend(self.uniques_schema(
                 map(self.get_sensor_type, organization_rows),
                 id_column="id"
             ))
-            import_checks.extend(self.uniques(map(self.get_import_check, organization_rows), id_column="id"))
-        ingests = list(filter(lambda x: x is not None, map(self.get_ingests, rows)))
-        ids = list(map(lambda x: x["order_sample_data_id"], rows))
+            import_checks.extend(self.uniques(map(self.get_import_check, organization_rows), id_column="id")) # gets all unique import checks
+        ingests = list(filter(lambda x: x is not None, map(self.get_ingests, rows))) # gets ingests
+        ids = list(map(lambda x: x["order_sample_data_id"], rows)) # ids of samples
         return sensor_types, import_checks, ingests, ids
 
     def is_in_scope(self, row: Dict):
@@ -233,6 +233,12 @@ class EurofinsSource(Source):
             return already_done
 
     def read_single_user(self, auth_row):
+        
+        # check if user is already known
+        # if no, 
+        
+        # 
+        
         already_done = self.read_already_done(self.already_done_in)
         rows = self.super_source.read_all(auth_row['relationId'])
         self.statsd_client.gauge(cst.STATS_SOURCE_SAMPLES, len(rows))

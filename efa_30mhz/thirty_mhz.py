@@ -6,7 +6,11 @@ from typing import IO, Dict, Any
 
 from loguru import logger
 from abc import ABC, abstractmethod
+from pandas import DataFrame, concat
 import requests
+from sqlalchemy import column
+
+from datetime import datetime
 
 from efa_30mhz.metrics import Metric
 from efa_30mhz.sync import Target
@@ -260,7 +264,6 @@ class ShareSensorType(ThirtyMHzEndpoint):
         super(ShareSensorType, self).create(organization=False)
         self.base_url = prev_base_url
 
-
 class ThirtyMHz:
     api_url = "https://api.30mhz.com/api/{base_url}/organization/{organization}"
     api_url_no_organization = "https://api.30mhz.com/api/{base_url}"
@@ -488,28 +491,70 @@ class SamplesGetter:
         self.api_key = api_key
         self.organization = organization
         self.import_check_url = f"https://api.30mhz.com/api/import-check/organization/{self.organization}"
-        self.stats_url = "https://api.30mhz.com/api/stats/events/check/{import_check_id}/from/{from_date}/until/{end_date}"
+        self.stats_url = "https://api.30mhz.com/api/stats/check/{import_check_id}/from/{from_date}/until/{end_date}"
         
-    def get_all_samples_for_user_from_until(self, from_date, end_date):
+    def get_all_samples_for_user_from_until(self, from_date, end_date) -> DataFrame:
+        
+        column_names = ['timestamp', 'sensor_type', 'import_check', 'check_name', 'research_number', 'sample_description', 'file']
+        
+        samples = DataFrame(columns=column_names)
+        
         import_checks = self._get_import_checks()
-        import_check_ids = map(
-            self._get_import_check_id,
-            import_checks
-        )
-        for import_check_id in import_check_ids:
+        
+        for import_check in import_checks:
+            import_check_id = import_check['checkId']
             headers = self.headers
-            params = self.params
+            params = self.stats_params
             stats_url = self.stats_url.format(import_check_id=import_check_id, from_date=from_date, end_date=end_date)
             
             r = requests.get(stats_url, headers=headers, params=params)
+            
+            data = r.json()
+            
+            samples_of_import_check = [
+                self.extract_sample_identifier_data(
+                    sensor_update,
+                    import_check['sensorType'],
+                    import_check_id,
+                    import_check['name'],
+                    datetime.utcfromtimestamp(int(key)/1000).strftime('%Y-%m-%d %H:%M:%S')
+                ) 
+                for key,sensor_update in data.items()
+                    if import_check['sensorType'] + '.research_number' in sensor_update
+            ]
+            
+            fey = DataFrame(samples_of_import_check, columns=column_names)
+            
+            samples = concat([samples, fey])
+            
+        return samples
 
+            
+    @staticmethod
+    def extract_sample_identifier_data(sensor_update: dict, sensor_type: str, import_check: str, check_name: str, key: str):
+        # Checks if sensor import check belongs to EFA pipeline
+        if sensor_type + '.research_number' in sensor_update:
+            return [
+                key,
+                sensor_type,
+                import_check,
+                check_name,
+                sensor_update[sensor_type + '.research_number'],
+                sensor_update[sensor_type + '.sample_description'],
+                sensor_update[sensor_type + '.file']
+            ]
+        else:
+            return None
     
     @property
-    def params(self):
-        return {
+    def stats_params(self):
+        params = {
             "intervalSize": "15m",
+            "fields": "1d",
             "statisticType": "none"
-        }          
+        }
+        return '&'.join([k if v is None else f"{k}={v}" for k, v in params.items()]) 
+        
 
 
     @property
@@ -528,7 +573,3 @@ class SamplesGetter:
         else:
             logger.error(r.request.headers)
             raise ThirtyMHzError(f"Faulty status code {r.status_code}: {r.json()}")
-        
-    @staticmethod
-    def _get_import_check_id(import_check: Dict) -> str:
-        return import_check['checkId']

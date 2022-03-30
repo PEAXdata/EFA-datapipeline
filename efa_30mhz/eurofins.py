@@ -10,6 +10,7 @@ from efa_30mhz.metrics import Metric
 from efa_30mhz.pdf import PDF
 from efa_30mhz.sync import Source
 from efa_30mhz.thirty_mhz import infer_type
+from typing import Tuple
 import efa_30mhz.constants as cst
 
 
@@ -39,7 +40,7 @@ class EurofinsSource(Source):
         self.default_api_key = default_api_key
         self.default_organization = default_organization
 
-    def to_thirty_mhz(self, rows: List) -> (List, List, List, List):
+    def to_thirty_mhz(self, rows: List) -> Tuple[List, List, List, List]:
         sensor_types = []
         import_checks = []
         for organization_id in set(map(lambda r: r["organization_id"], rows)): # gets all unique sensor types
@@ -54,9 +55,9 @@ class EurofinsSource(Source):
         return sensor_types, import_checks, ingests, ids
 
     def is_in_scope(self, row: Dict):
-        return self.package_code_to_name(row["analysis_package_code"]) is not None and row["sample_date"] > datetime(
-            2019,
-            1, 1, tzinfo=row["sample_date"].tzinfo)
+        today = datetime.date.today(tzinfo=row["sample_date"].tzinfo)
+        week_ago = today - today - datetime.timedelta(days=7)
+        return self.package_code_to_name(row["analysis_package_code"]) is not None and row["sample_date"] > week_ago
 
     def package_code_to_name(self, _id):
         if _id in self.package_codes:
@@ -236,9 +237,7 @@ class EurofinsSource(Source):
         
         # check if user is already known
         # if no, 
-        
-        # 
-        
+
         already_done = self.read_already_done(self.already_done_in)
         rows = self.super_source.read_all(auth_row['relationId'])
         self.statsd_client.gauge(cst.STATS_SOURCE_SAMPLES, len(rows))

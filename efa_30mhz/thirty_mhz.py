@@ -10,7 +10,7 @@ from pandas import DataFrame, concat
 import requests
 from sqlalchemy import column
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from efa_30mhz.metrics import Metric
 from efa_30mhz.sync import Target
@@ -379,6 +379,8 @@ class ThirtyMHzTarget(Target):
         self.tmz = ThirtyMHzGetter(api_key, organization)
         self.already_done_out = already_done_out
         self.statsd_client = Metric.client()
+        self.api_key = api_key
+        self.organization = organization
 
     def write(self, rows):
         sensor_types, import_checks, ingests, ids = rows
@@ -458,6 +460,9 @@ class ThirtyMHzTarget(Target):
 
     def write_ingests(self, ingests):
         done_ids = []
+        
+        ingests = self.filter_existing_order_sample_data_ids(ingests)
+        
         for ingest in ingests:
             try:
                 import_check = self.tmz.get(ingest).import_check.get(id=ingest["id"])
@@ -475,6 +480,26 @@ class ThirtyMHzTarget(Target):
             except ThirtyMHzError as e:
                 logger.error(e.message)
         return done_ids
+    
+    def filter_existing_order_sample_data_ids(self, ingests):
+        try:
+            samples_getter = SamplesGetter(self.api_key, self.organization)
+            
+            from_date = datetime.today().strftime('%Y-%m-%d')
+            to_date = (datetime.today() - timedelta(days=7)).strftime('%Y-%m-%d')
+            existing_order_ids = samples_getter.get_all_order_ids_for_user_from_until(from_date, to_date)
+            
+            filtered_ingests = filter(
+                lambda i: i['data']['order_sample_data_id'] not in existing_order_ids, 
+                ingests
+                )    
+            
+            return filtered_ingests
+        
+        except Exception as e:
+            logger.error(e.message)
+            return ingests
+            
 
     def write_ids(self, ids):
         with open(self.already_done_out, "w") as f:
@@ -495,7 +520,7 @@ class SamplesGetter:
         
     def get_all_samples_for_user_from_until(self, from_date, end_date) -> DataFrame:
         
-        column_names = ['timestamp', 'sensor_type', 'import_check', 'check_name', 'research_number', 'sample_description', 'file']
+        column_names = ['timestamp', 'sensor_type', 'import_check', 'check_name', 'research_number', 'sample_description', 'file', 'order_sample_data_id']
         
         samples = DataFrame(columns=column_names)
         
@@ -521,6 +546,7 @@ class SamplesGetter:
                 ) 
                 for key,sensor_update in data.items()
                     if import_check['sensorType'] + '.research_number' in sensor_update
+                    and import_check['sensorType'] + '.order_sample_data_id' in sensor_update
             ]
             
             fey = DataFrame(samples_of_import_check, columns=column_names)
@@ -528,23 +554,25 @@ class SamplesGetter:
             samples = concat([samples, fey])
             
         return samples
+    
+    def get_all_order_ids_for_user_from_until(self, from_date, end_date) -> list:
+        df = self.get_all_samples_for_user_from_until(from_date, end_date)
+        return df['order_sample_data_id'].tolist()
 
             
     @staticmethod
     def extract_sample_identifier_data(sensor_update: dict, sensor_type: str, import_check: str, check_name: str, key: str):
         # Checks if sensor import check belongs to EFA pipeline
-        if sensor_type + '.research_number' in sensor_update:
-            return [
-                key,
-                sensor_type,
-                import_check,
-                check_name,
-                sensor_update[sensor_type + '.research_number'],
-                sensor_update[sensor_type + '.sample_description'],
-                sensor_update[sensor_type + '.file']
-            ]
-        else:
-            return None
+        return [
+            key,
+            sensor_type,
+            import_check,
+            check_name,
+            sensor_update[sensor_type + '.research_number'],
+            sensor_update[sensor_type + '.sample_description'],
+            sensor_update[sensor_type + '.file'],
+            sensor_update[sensor_type + '.order_sample_data_id']
+        ]
     
     @property
     def stats_params(self):

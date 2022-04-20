@@ -177,6 +177,8 @@ class EurofinsSource(Source):
             data[result_data["origin_code"]] = result_data["result_value"]
         data["datetime"] = row["sample_date"]
         data["research_number"] = row["sample_code"]
+        data["order_sample_data_id"] = row["order_sample_data_id"]
+        
         try:
             sample_file = self.get_sample_file(row)
             if sample_file:

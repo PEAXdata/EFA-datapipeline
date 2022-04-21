@@ -252,7 +252,6 @@ class EurofinsSource(Source):
             filter(
                 lambda x: x
                           and len(x["result_group_data"]) > 0
-                          and x["order_sample_data_id"] not in already_done
                           and self.is_in_scope(x),
                 map(
                     lambda x: self.add_auth(row=x, auth_rows=[auth_row]),

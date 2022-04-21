@@ -407,7 +407,7 @@ class ThirtyMHzTarget(Target):
         
         if self.check_if_org_exists()==True:
             today = date.today()
-            week_ago = today - datetime.timedelta(days=7)
+            week_ago = today - timedelta(days=7)
             try:
                 filtered = ingests = filter(
                     lambda i: i['data']['datetime'] > week_ago,

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, date 
 from typing import List, Dict, Iterable
 
 import pytz
@@ -55,7 +55,7 @@ class EurofinsSource(Source):
         return sensor_types, import_checks, ingests, ids
 
     def is_in_scope(self, row: Dict):
-        today = datetime.date.today(tzinfo=row["sample_date"].tzinfo)
+        today = date.today(tzinfo=row["sample_date"].tzinfo)
         week_ago = today - today - datetime.timedelta(days=7)
         return self.package_code_to_name(row["analysis_package_code"]) is not None and row["sample_date"] > week_ago
 

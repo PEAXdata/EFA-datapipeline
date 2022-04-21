@@ -48,6 +48,7 @@ Thumbs.db
 *.mov
 *.wmv
 
+/.venv/
 /venv/
 /efa_2021_001_30mhz_synchronization.egg-info/
 /config.py

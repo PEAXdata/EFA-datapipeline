@@ -10,6 +10,7 @@ from efa_30mhz.metrics import Metric
 from efa_30mhz.pdf import PDF
 from efa_30mhz.sync import Source
 from efa_30mhz.thirty_mhz import infer_type
+from typing import Tuple
 import efa_30mhz.constants as cst
 
 
@@ -39,24 +40,24 @@ class EurofinsSource(Source):
         self.default_api_key = default_api_key
         self.default_organization = default_organization
 
-    def to_thirty_mhz(self, rows: List) -> (List, List, List, List):
+    def to_thirty_mhz(self, rows: List) -> Tuple[List, List, List, List]:
         sensor_types = []
         import_checks = []
-        for organization_id in set(map(lambda r: r["organization_id"], rows)):
+        for organization_id in set(map(lambda r: r["organization_id"], rows)): # gets all unique sensor types
             organization_rows = list(filter(lambda x: x['organization_id'] == organization_id, rows))
             sensor_types.extend(self.uniques_schema(
                 map(self.get_sensor_type, organization_rows),
                 id_column="id"
             ))
-            import_checks.extend(self.uniques(map(self.get_import_check, organization_rows), id_column="id"))
-        ingests = list(filter(lambda x: x is not None, map(self.get_ingests, rows)))
-        ids = list(map(lambda x: x["order_sample_data_id"], rows))
+            import_checks.extend(self.uniques(map(self.get_import_check, organization_rows), id_column="id")) # gets all unique import checks
+        ingests = list(filter(lambda x: x is not None, map(self.get_ingests, rows))) # gets ingests
+        ids = list(map(lambda x: x["order_sample_data_id"], rows)) # ids of samples
         return sensor_types, import_checks, ingests, ids
 
     def is_in_scope(self, row: Dict):
-        return self.package_code_to_name(row["analysis_package_code"]) is not None and row["sample_date"] > datetime(
-            2019,
-            1, 1, tzinfo=row["sample_date"].tzinfo)
+        today = datetime.date.today(tzinfo=row["sample_date"].tzinfo)
+        week_ago = today - today - datetime.timedelta(days=7)
+        return self.package_code_to_name(row["analysis_package_code"]) is not None and row["sample_date"] > week_ago
 
     def package_code_to_name(self, _id):
         if _id in self.package_codes:
@@ -176,6 +177,8 @@ class EurofinsSource(Source):
             data[result_data["origin_code"]] = result_data["result_value"]
         data["datetime"] = row["sample_date"]
         data["research_number"] = row["sample_code"]
+        data["order_sample_data_id"] = row["order_sample_data_id"]
+        
         try:
             sample_file = self.get_sample_file(row)
             if sample_file:
@@ -233,6 +236,10 @@ class EurofinsSource(Source):
             return already_done
 
     def read_single_user(self, auth_row):
+        
+        # check if user is already known
+        # if no, 
+
         already_done = self.read_already_done(self.already_done_in)
         rows = self.super_source.read_all(auth_row['relationId'])
         self.statsd_client.gauge(cst.STATS_SOURCE_SAMPLES, len(rows))

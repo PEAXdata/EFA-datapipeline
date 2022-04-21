@@ -6,7 +6,9 @@ from typing import IO, Dict, Any
 
 from loguru import logger
 from abc import ABC, abstractmethod
+from pandas import DataFrame, concat
 import requests
+from datetime import datetime, timedelta
 
 from efa_30mhz.metrics import Metric
 from efa_30mhz.sync import Target
@@ -164,8 +166,6 @@ class ImportCheck(ThirtyMHzEndpoint):
                 }
             )
 
-        # logger.debug(f"Ingesting data: {pformat(data)}")
-
         r = self.tmz.post("ingest", data)
         t1 = time.time()
         if r["failedEventsNo"] > 0:
@@ -187,7 +187,6 @@ class ImportCheck(ThirtyMHzEndpoint):
             else:
                 d[k] = r[k]
         return d
-
 
 class DataUpload(ThirtyMHzEndpoint):
     stats_success = cst.STATS_30MHZ_UPLOADS_SUCCESS
@@ -262,7 +261,6 @@ class ShareSensorType(ThirtyMHzEndpoint):
         logger.debug(self.base_url)
         super(ShareSensorType, self).create(organization=False)
         self.base_url = prev_base_url
-
 
 class ThirtyMHz:
     api_url = "https://api.30mhz.com/api/{base_url}/organization/{organization}"
@@ -351,8 +349,7 @@ class ThirtyMHz:
             logger.debug(url)
             logger.debug(data)
             raise ThirtyMHzError(f"Faulty status code {r.status_code}: {r.json()}")
-
-
+        
 class ThirtyMHzGetter:
     def __init__(self, default_api_key, default_organization):
         self.tmzs = {}
@@ -373,7 +370,6 @@ class ThirtyMHzGetter:
         self.tmzs[(api_key, organization)] = ThirtyMHz(api_key, organization)
         return self.tmzs[(api_key, organization)]
 
-
 class ThirtyMHzTarget(Target):
     def __init__(self, api_key, organization, already_done_out, **kwargs):
         super(ThirtyMHzTarget, self).__init__(**kwargs)
@@ -381,6 +377,8 @@ class ThirtyMHzTarget(Target):
         self.tmz = ThirtyMHzGetter(api_key, organization)
         self.already_done_out = already_done_out
         self.statsd_client = Metric.client()
+        self.api_key = api_key
+        self.organization = organization
 
     def write(self, rows):
         sensor_types, import_checks, ingests, ids = rows
@@ -460,6 +458,9 @@ class ThirtyMHzTarget(Target):
 
     def write_ingests(self, ingests):
         done_ids = []
+        
+        ingests = self.filter_existing_order_sample_data_ids(ingests)
+        
         for ingest in ingests:
             try:
                 import_check = self.tmz.get(ingest).import_check.get(id=ingest["id"])
@@ -477,9 +478,124 @@ class ThirtyMHzTarget(Target):
             except ThirtyMHzError as e:
                 logger.error(e.message)
         return done_ids
+    
+    def filter_existing_order_sample_data_ids(self, ingests):
+        try:
+            samples_getter = SamplesGetter(self.api_key, self.organization)
+            
+            from_date = datetime.today().strftime('%Y-%m-%d')
+            to_date = (datetime.today() - timedelta(days=7)).strftime('%Y-%m-%d')
+            existing_order_ids = samples_getter.get_all_order_ids_for_user_from_until(from_date, to_date)
+            
+            filtered_ingests = filter(
+                lambda i: i['data']['order_sample_data_id'] not in existing_order_ids, 
+                ingests
+                )    
+            
+            return filtered_ingests
+        
+        except Exception as e:
+            logger.error(e.message)
+            return ingests
+            
 
     def write_ids(self, ids):
         with open(self.already_done_out, "w") as f:
             logger.debug("Writing to already done")
             logger.debug(ids)
             f.write("\n".join(list(map(str, ids))))
+
+class SamplesGetter:
+    """
+    Class for getting raw samples from 30Mhz API.
+    """
+    
+    def __init__(self, api_key, organization):
+        self.api_key = api_key
+        self.organization = organization
+        self.import_check_url = f"https://api.30mhz.com/api/import-check/organization/{self.organization}"
+        self.stats_url = "https://api.30mhz.com/api/stats/check/{import_check_id}/from/{from_date}/until/{end_date}"
+        
+    def get_all_samples_for_user_from_until(self, from_date, end_date) -> DataFrame:
+        
+        column_names = ['timestamp', 'sensor_type', 'import_check', 'check_name', 'research_number', 'sample_description', 'file', 'order_sample_data_id']
+        
+        samples = DataFrame(columns=column_names)
+        
+        import_checks = self._get_import_checks()
+        
+        for import_check in import_checks:
+            import_check_id = import_check['checkId']
+            headers = self.headers
+            params = self.stats_params
+            stats_url = self.stats_url.format(import_check_id=import_check_id, from_date=from_date, end_date=end_date)
+            
+            r = requests.get(stats_url, headers=headers, params=params)
+            
+            data = r.json()
+            
+            samples_of_import_check = [
+                self.extract_sample_identifier_data(
+                    sensor_update,
+                    import_check['sensorType'],
+                    import_check_id,
+                    import_check['name'],
+                    datetime.utcfromtimestamp(int(key)/1000).strftime('%Y-%m-%d %H:%M:%S')
+                ) 
+                for key,sensor_update in data.items()
+                    if import_check['sensorType'] + '.research_number' in sensor_update
+                    and import_check['sensorType'] + '.order_sample_data_id' in sensor_update
+            ]
+            
+            fey = DataFrame(samples_of_import_check, columns=column_names)
+            
+            samples = concat([samples, fey])
+            
+        return samples
+    
+    def get_all_order_ids_for_user_from_until(self, from_date, end_date) -> list:
+        df = self.get_all_samples_for_user_from_until(from_date, end_date)
+        return df['order_sample_data_id'].tolist()
+
+            
+    @staticmethod
+    def extract_sample_identifier_data(sensor_update: dict, sensor_type: str, import_check: str, check_name: str, key: str):
+        # Checks if sensor import check belongs to EFA pipeline
+        return [
+            key,
+            sensor_type,
+            import_check,
+            check_name,
+            sensor_update[sensor_type + '.research_number'],
+            sensor_update[sensor_type + '.sample_description'],
+            sensor_update[sensor_type + '.file'],
+            sensor_update[sensor_type + '.order_sample_data_id']
+        ]
+    
+    @property
+    def stats_params(self):
+        params = {
+            "intervalSize": "15m",
+            "fields": "1d",
+            "statisticType": "none"
+        }
+        return '&'.join([k if v is None else f"{k}={v}" for k, v in params.items()]) 
+        
+
+
+    @property
+    def headers(self):
+        return {
+            "Authorization": "Bearer " + self.api_key,
+            "Content-type": "application/json",
+            "Accept": "application/json",
+        }
+
+    def _get_import_checks(self):
+        headers = self.headers
+        r = requests.get(self.import_check_url, headers=headers)
+        if 200 <= r.status_code < 300:
+            return r.json()
+        else:
+            logger.error(r.request.headers)
+            raise ThirtyMHzError(f"Faulty status code {r.status_code}: {r.json()}")

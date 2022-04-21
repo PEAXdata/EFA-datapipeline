@@ -8,8 +8,6 @@ from loguru import logger
 from abc import ABC, abstractmethod
 from pandas import DataFrame, concat
 import requests
-from sqlalchemy import column
-
 from datetime import datetime, timedelta
 
 from efa_30mhz.metrics import Metric

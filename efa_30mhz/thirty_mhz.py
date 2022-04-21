@@ -8,7 +8,7 @@ from loguru import logger
 from abc import ABC, abstractmethod
 from pandas import DataFrame, concat
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 from efa_30mhz.metrics import Metric
 from efa_30mhz.sync import Target
@@ -380,8 +380,22 @@ class ThirtyMHzTarget(Target):
         self.api_key = api_key
         self.organization = organization
 
+    def check_if_org_exists(self) -> bool:
+        url = f"https://api.30mhz.com/api/organization/{self.organization}"
+        
+        r = requests.get(url, headers= {
+                                "Authorization": self.api_key,
+                                "Content-type": "application/json",
+                                "Accept": "application/json",
+                            })
+        if r.status_code > 200:
+            return False
+        else:
+            return True
+
     def write(self, rows):
         sensor_types, import_checks, ingests, ids = rows
+        
         self.statsd_client.incr(cst.STATS_30MHZ_SENSOR_TYPES_TODO, len(sensor_types))
         self.statsd_client.incr(cst.STATS_30MHZ_IMPORT_CHECKS_TODO, len(import_checks))
         self.statsd_client.incr(cst.STATS_30MHZ_INGESTS_TODO, len(ingests))
@@ -390,8 +404,22 @@ class ThirtyMHzTarget(Target):
         logger.debug(import_checks)
         self.write_sensor_types(sensor_types)
         self.write_import_checks(import_checks)
+        
+        if self.check_if_org_exists()==True:
+            today = date.today()
+            week_ago = today - datetime.timedelta(days=7)
+            try:
+                filtered = ingests = filter(
+                    lambda i: i['data']['datetime'] > week_ago,
+                ingests
+                )
+                ingests = filtered 
+            except Exception as e:
+                logger.error(e.message)
+                    
         ingest_results = self.write_ingests(ingests)
         self.write_ids(ingest_results)
+
 
     def write_sensor_types(self, sensor_types):
         for sensor_type in sensor_types:

@@ -55,10 +55,10 @@ class EurofinsSource(Source):
         return sensor_types, import_checks, ingests, ids
 
     def is_in_scope(self, row: Dict):
-        today = date.today()
-        week_ago = today - datetime.timedelta(days=7)
-        return self.package_code_to_name(row["analysis_package_code"]) is not None and row["sample_date"] > week_ago
-
+        return self.package_code_to_name(row["analysis_package_code"]) is not None and row["sample_date"] > datetime(
+            2019,
+            1, 1, tzinfo=row["sample_date"].tzinfo)
+        
     def package_code_to_name(self, _id):
         if _id in self.package_codes:
             return self.package_codes[_id]

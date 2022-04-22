@@ -53,7 +53,7 @@ class ThirtyMHzEndpoint(ABC):
             self.statsd_client.timing(self.stats_time, t1 - t0)
             return result
         except ThirtyMHzError as e:
-            logger.error(e.message)
+            logger.debug(e.message)
             self.statsd_client.incr(self.stats_failures)
 
     @abstractmethod

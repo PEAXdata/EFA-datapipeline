@@ -410,7 +410,7 @@ class ThirtyMHzTarget(Target):
             week_ago = today - timedelta(days=7)
             try:
                 filtered = ingests = filter(
-                    lambda i: i['data']['datetime'] > week_ago,
+                    lambda i: i['data']['datetime'] > week_ago if 'datetime' in i['data'] else False,
                 ingests
                 )
                 ingests = filtered 
@@ -557,27 +557,30 @@ class SamplesGetter:
             headers = self.headers
             params = self.stats_params
             stats_url = self.stats_url.format(import_check_id=import_check_id, from_date=from_date, end_date=end_date)
-            
-            r = requests.get(stats_url, headers=headers, params=params)
-            
-            data = r.json()
-            
-            samples_of_import_check = [
-                self.extract_sample_identifier_data(
-                    sensor_update,
-                    import_check['sensorType'],
-                    import_check_id,
-                    import_check['name'],
-                    datetime.utcfromtimestamp(int(key)/1000).strftime('%Y-%m-%d %H:%M:%S')
-                ) 
-                for key,sensor_update in data.items()
-                    if import_check['sensorType'] + '.research_number' in sensor_update
-                    and import_check['sensorType'] + '.order_sample_data_id' in sensor_update
-            ]
-            
-            fey = DataFrame(samples_of_import_check, columns=column_names)
-            
-            samples = concat([samples, fey])
+            try:
+                
+                r = requests.get(stats_url, headers=headers, params=params)
+                
+                data = r.json()
+                
+                samples_of_import_check = [
+                    self.extract_sample_identifier_data(
+                        sensor_update,
+                        import_check['sensorType'],
+                        import_check_id,
+                        import_check['name'],
+                        datetime.utcfromtimestamp(int(key)/1000).strftime('%Y-%m-%d %H:%M:%S')
+                    ) 
+                    for key,sensor_update in data.items()
+                        if import_check['sensorType'] + '.research_number' in sensor_update
+                        and import_check['sensorType'] + '.order_sample_data_id' in sensor_update
+                ]
+                
+                fey = DataFrame(samples_of_import_check, columns=column_names)
+                samples = concat([samples, fey])
+            except Exception as e:
+                logger.debug(e.message)
+                return samples                
             
         return samples
     

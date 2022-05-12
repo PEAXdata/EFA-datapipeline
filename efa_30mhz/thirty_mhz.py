@@ -629,5 +629,4 @@ class SamplesGetter:
         if 200 <= r.status_code < 300:
             return r.json()
         else:
-            logger.error(r.request.headers)
             raise ThirtyMHzError(f"Faulty status code {r.status_code}: {r.json()}")

@@ -410,7 +410,7 @@ class ThirtyMHzTarget(Target):
             week_ago = today - timedelta(days=7)
             try:
                 filtered = ingests = filter(
-                    lambda i: i['data']['datetime'] > week_ago if 'datetime' in i['data'] else False,
+                    lambda i: i['data']['datetime'] > week_ago if 'datetime' in i['data'] and 'data' in i else False,
                 ingests
                 )
                 ingests = filtered 
@@ -523,8 +523,9 @@ class ThirtyMHzTarget(Target):
             return filtered_ingests
         
         except Exception as e:
-            logger.error(e.message)
-            return ingests
+            logger.warning("Problem during filtering of order sample data ids for existing customer. Resuming with original list.")
+            logger.warning(e.message)
+            return ingests 
             
 
     def write_ids(self, ids):
